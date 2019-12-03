@@ -3,10 +3,7 @@
 module Main where
 
 import Data.Array.ST
-import Control.Monad.ST
 import Data.Array.IArray
-import Data.Array.Unboxed
-import Data.STRef
 
 import Data.List (find)
 
@@ -24,24 +21,24 @@ inputs = [ [1,0,0,0,99]
 
 modifyInput :: Int -> Int -> [Int] -> [Int]
 modifyInput noun verb (first:_:_:rest) = first:noun:verb:rest
+modifyInput _ _ _ = error "Invalid input"
 
 sol :: [Int] -> Int
 sol f = (! 0) $ runSTUArray $
   do { stua <- newListArray (0, (length f) - 1) f
-     ; let go p = do { val <- readArray stua p
-                     ;  case val of
-                          99 -> return stua
-                          _ -> do { let op =
-                                          case val of
-                                            1 -> (+)
-                                            2 -> (*)
-                                            _ -> error ("invalid op " ++ show val)
-                                  ; i1 <- readArray stua (p + 1) >>= readArray stua
-                                  ; i2 <- readArray stua (p + 2) >>= readArray stua
-                                  ; o <- readArray stua (p + 3)
-                                  ; writeArray stua o (op i1 i2)
-                                  ; go (p + 4) }}
-        ; go 0 }
+     ; let loop p = do { val <- readArray stua p
+                       ;  case val of
+                           99 -> return stua
+                           _ -> do { let op = case val of
+                                                1 -> (+)
+                                                2 -> (*)
+                                                _ -> error ("invalid op " ++ show val)
+                                   ; i1 <- readArray stua (p + 1) >>= readArray stua
+                                   ; i2 <- readArray stua (p + 2) >>= readArray stua
+                                   ; o <- readArray stua (p + 3)
+                                   ; writeArray stua o (op i1 i2)
+                                   ; loop (p + 4) }}
+        ; loop 0 }
 
 -- Values are between 0 and 99, inclusive.
 

@@ -6,7 +6,7 @@ import Data.Maybe (catMaybes)
 
 import Data.ByteString.Char8 (ByteString, unpack, split)
 import qualified Data.ByteString.Char8 as B8
-import Data.List (sortOn, partition)
+import Data.List (partition)
 
 
 inputs :: [[ByteString]]

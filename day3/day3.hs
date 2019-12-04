@@ -57,7 +57,8 @@ intersections :: [[Interval]] -> [(Int, Int)]
 intersections [w1, w2] = filter (\(x,y) -> not (x == 0 && y == 0)) combs
   where (hw1, vw1) = partition isHoriz w1
         (hw2, vw2) = partition isHoriz w2
-        combs = catMaybes $ (checkInter <$> hw1 <*> vw2) ++ (checkInter <$> hw2 <*> vw1)
+        combs = catMaybes $ (checkInter <$> hw1 <*> vw2)
+                         ++ (checkInter <$> hw2 <*> vw1)
 intersections _ = error "invalid inputs"
 
 closest  :: [(Int, Int)] -> Int
@@ -90,7 +91,10 @@ main = do let ints = map (map (toIntervals (0,0))) $ map toInputs $ inputs
           print iints
           print $ map closest iints
           print $ map (minimum . uncurry toSteps) $ zip ints iints
-          inputInts <- map (toIntervals (0,0)) <$> toInputs <$> B8.lines <$> B8.readFile "input"
+          inputInts <- map (toIntervals (0,0))
+                       <$> toInputs
+                       <$> B8.lines
+                       <$> B8.readFile "input"
           let inputIntersections = intersections inputInts
           print $ closest inputIntersections
           print $ minimum $ toSteps inputInts inputIntersections

@@ -6,9 +6,7 @@ import Data.Array.ST
 import Data.STRef
 import Control.Monad.ST
 
-
 import qualified Data.ByteString.Char8 as B8
-
 
 getInput :: IO [Int]
 getInput = map (read @Int . B8.unpack). B8.split ',' <$> B8.readFile "input"
@@ -23,19 +21,7 @@ testInputs = [ [1,0,0,0,99]
                 1106,0,36,98,0,0,1002,21,125,20,4,20,1105,1,46,104,
                 999,1105,1,46,1101,1000,1,20,4,20,1105,1,46,98,99]]
 
-
-modifyInput :: Int -> Int -> [Int] -> [Int]
-modifyInput noun verb (first:_:_:rest) = first:noun:verb:rest
-modifyInput _ _ _ = error "Invalid input"
-
-
 data Mode = Pos | Imm deriving (Show)
-
-toMode :: Int -> Mode
-toMode 0 = Pos
-toMode 1 = Imm
-toMode _ = error "Invalid Mode"
-
 data MonoOp = Input | Output deriving (Show)
 data BinOp  = JNZ | JZ deriving (Show)
 data TriOp  = Mul | Sum | LessT | Equal  deriving (Show)
@@ -57,10 +43,13 @@ readOp i = (op (i `mod` 100), m1, m2, m3)
         m1 = toMode $ (i `div` 100) `mod` 10
         m2 = toMode $ (i `div` 1000) `mod` 10
         m3 = toMode $ (i `div` 10000) `mod` 10
+        toMode 0 = Pos
+        toMode 1 = Imm
+        toMode _ = error "Invalid Mode"
 
 
-sol :: [Int] -> [Int] -> [Int]
-sol inputs prog = runST $
+run :: [Int] -> [Int] -> [Int]
+run prog inputs = runST $
   do { sta <- (newListArray (0, (length prog) - 1) prog) :: ST s (STArray s Int Int)
      ; inp <- newSTRef inputs
      ; pos <- newSTRef 0
@@ -110,7 +99,7 @@ sol inputs prog = runST $
 
 main :: IO ()
 main = do input <- getInput
-          mapM_  (print . sol [8]) testInputs
-          print $ sol [1] input
-          print $ sol [5] input
+          mapM_  (print . flip run [8]) testInputs
+          print $ run input [1]
+          print $ run input [5]
           return ()

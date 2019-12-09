@@ -64,42 +64,53 @@ run s@(State done cpos crel cmem cinps) = if done then (s, [])
      ; pos <- newSTRef cpos
      ; rel <- newSTRef crel
      ; out <- newSTRef []
+     ; mmem <- (thaw cmem) :: ST s (STUArray s Int Int)
      ; let loop mem =
-             do {r <- readSTRef rel
-                ; let
-                    readMem Imm p = if p > ma then 0 else mem ! p
-                      where (_,ma) = bounds mem
-                    readMem Pos p = readMem Imm (readMem Imm p)
-                    readMem Rel p = readMem Imm ((readMem Imm p) + r)
-                    writeMem Rel p v = writeMem Imm (p+r) v
-                    writeMem _ p v = loop $ if p <= ma
-                                            then mem // [(p,v)]
-                                            else expmem // ((p,v):(assocs mem))
-                      where expmem = array (0, p) [(i,0) | i <- [0..p]]
-                            (_, ma) = bounds mem
+             do { let
+                    readMem Imm p = do {  (_, ma) <- getBounds mem
+                                       ; if p > ma
+                                         then return 0
+                                         else readArray mem p }
+
+                    readMem Pos p = do { loc <- readMem Imm p
+                                       ; readMem Imm loc }
+                    readMem Rel p = do { loc <- readMem Imm p
+                                       ; r <- readSTRef rel
+                                       ; readMem Imm (loc + r)}
+                    writeMem Rel p v = do { r <- readSTRef rel
+                                          ; writeMem Imm (p+r) v }
+                    writeMem _ p v =
+                      do {  (_, ma) <- getBounds mem
+                         ; if p <= ma
+                           then do { writeArray mem p v
+                                   ; loop mem }
+                           else do { els <- getElems mem
+                                   ; mem <- newListArray (0,p) (els ++ (repeat 0))
+                                   ; writeArray mem p v
+                                   ; loop mem }}
                 ; p <- readSTRef pos
-                ; let (op, m1, m2, m3) = readOp $ readMem Imm p
+                ; (op, m1, m2, m3) <- readOp <$> readMem Imm p
                 ; case op of
                     Exit -> return (True, mem)
                     Mono mop -> do { case mop of
-                                     Input -> do { let p1 = readMem Imm (p + 1)
+                                     Input -> do { p1 <- readMem Imm (p + 1)
                                                  ; ival <- readSTRef inp
                                                  ; case ival of
                                                      (ci:r) -> do { writeSTRef inp r
                                                                   ; writeSTRef pos (p + 2)
                                                                   ; writeMem m1 p1 ci }
                                                      [] -> return (False, mem) }
-                                     Output -> do { let p1 = readMem m1 (p + 1)
+                                     Output -> do { p1 <- readMem m1 (p + 1)
                                                   ; modifySTRef out (p1:)
                                                   ; writeSTRef pos (p + 2)
                                                   ; loop mem}
-                                     AdjustRel -> do { let p1 = readMem m1 (p + 1)
+                                     AdjustRel -> do { p1 <- readMem m1 (p + 1)
                                                      ; modifySTRef rel (p1+)
                                                      ; writeSTRef pos (p + 2)
                                                      ; loop mem}
                                   }
-                    Bin bop -> do { let p1 = readMem m1 (p + 1)
-                                        p2 = readMem m2 (p + 2)
+                    Bin bop -> do { p1 <- readMem m1 (p + 1)
+                                  ; p2 <- readMem m2 (p + 2)
                                   ; case bop of
                                       JNZ -> writeSTRef pos (if (p1 /= 0)
                                                              then p2
@@ -109,9 +120,9 @@ run s@(State done cpos crel cmem cinps) = if done then (s, [])
                                                              else (p + 3))
                                   ; loop mem }
 
-                    Tri top -> do { let p1 = readMem m1 (p + 1)
-                                        p2 = readMem m2 (p + 2)
-                                        p3 = readMem Imm (p + 3)
+                    Tri top -> do { p1 <- readMem m1 (p + 1)
+                                  ; p2 <- readMem m2 (p + 2)
+                                  ; p3 <- readMem Imm (p + 3)
                                   ; writeSTRef pos (p + 4)
                                   ; case top of
                                       Sum -> writeMem m3 p3 (p1 + p2)
@@ -120,12 +131,13 @@ run s@(State done cpos crel cmem cinps) = if done then (s, [])
                                                                then 1 else 0)
                                       Equal -> writeMem m3 p3 (if p1 == p2
                                                                then 1 else 0) }}
-     ; (finished, nmem) <- loop cmem
+     ; (finished, nmem) <- loop mmem
+     ; fmem <- freeze nmem
      ; np <- readSTRef pos
      ; no <- reverse <$> readSTRef out
      ; ni <- readSTRef inp
      ; nr <- readSTRef rel
-     ; return $ (State finished np nr nmem ni, no) }
+     ; return $ (State finished np nr fmem ni, no) }
 
 addInps :: [Int] -> State -> State
 addInps newInps st@(State {inps = inps}) = st {inps = (inps ++ newInps)}

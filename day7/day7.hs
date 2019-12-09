@@ -57,16 +57,16 @@ data State = State { done :: Bool,
 
 
 initState :: [Int] -> [Int] -> State
-initState prog inps = State False 0 prog inps []
+initState prog inps = State False 0 prog inps
 
 run :: State -> (State, [Int])
 run s@(State done ipos iprog iinps) =
-  if done then s
+  if done then (s, [])
   else runST $
   do { sta <- (newListArray (0, (length iprog) - 1) iprog) :: ST s (STArray s Int Int)
      ; inp <- newSTRef iinps
      ; pos <- newSTRef ipos
-     ; out <- newSTRef $ reverse iiout
+     ; out <- newSTRef []
      ; let readInput Imm p = readArray sta p
            readInput Pos p = readArray sta p >>= readArray sta
      ; let loop =
@@ -117,7 +117,7 @@ run s@(State done ipos iprog iinps) =
      ; els <- getElems sta
      ; o <-  reverse <$> readSTRef out
      ; i <- readSTRef inp
-     ; return $ State finished p els i o }
+     ; return $ (State finished p els i, o) }
 
 
 addInps :: [Int] -> State -> State
@@ -131,51 +131,13 @@ chain inps sts = chain' inps [] sts
          where  (ns, out) = run (addInps inps s)
 
 
-run5 :: [Int] -> [Int] -> Int
-run5 prog [a,b,c,d,e] =
-  traceShow ("Final 1", fr1) $
-  traceShow ("Final 2", fr2) $
-  traceShow ("Final 3", fr3) $
-  traceShow ("Final 4", fr4) $
-  traceShow ("Final 5", fr5) $
-  last $ fo5
-  where
+loopUntilDone :: [Int] -> [State] -> Int
+loopUntilDone inps sts = chain' inps [] sts
+ where chain' inps (s:_)  [] | done s = last inps
+       chain' inps states [] = chain' inps [] $ reverse states
+       chain' inps dones (s:sts) = chain' out (ns:dones) sts
+         where  (ns, out) = run (addInps inps s)
 
-    -- initial run
-    ir1@(id1, ip1, ie1, ii1, io1)  = run (False, 0, prog, [a,0])
-    ir2@(id2, ip2, ie2, ii2, io2) = run (False, 0, prog, (b:io1))
-    ir3@(id3, ip3, ie3, ii3, io3) = run (False, 0, prog, (c:io2))
-    ir4@(id4, ip4, ie4, ii4, io4) = run (False, 0, prog, (d:io3))
-    ir5@(id5, ip5, ie5, ii5, io5) = run (False, 0, prog, (e:io4))
-    (fr1,fr2,fr3,fr4,fr5@(_,_,_,_,fo5)) =
-      loop (id1,ip1,ie1,ii1 ++ io5)
-           (id2,ip2,ie2,ii2 ++ io1)
-           (id3,ip3,ie3,ii3 ++ io2)
-           (id4,ip4,ie4,ii4 ++ io3)
-           (id5,ip5,ie5,ii5 ++ io4)
-
-      loop r1@(d1,p1,e1,i1, o1)
-           r2@(d2,p2,e2,i2, o2)
-           r3@(d3,p3,e3,i3, o3)
-           r4@(d4,p4,e4,i4, o4)
-           r5@(d5,p5,e5,i5, o5) =
-      trace "Looping: " $
-      if d5'
-      then (r1',r2',r3',r4',r5')
-      else
-        loop r1' r2' r3' r4' r5'
-        loop r1@(d1,p1,e1,i1, o1)
-             r1@(d2,p2,e2,i2, o2)
-             r1@(d3,p3,e3,i3, o3)
-             r1@(d4,p4,e4,i4, o4)
-             r1@(d5,p5,e5,i5, o5) =
-      where
-        r1'@(_, _, _, o1') = run r1 o5
-        r2'@(_, _, _, o2') = run r2 o1'
-        r3'@(_,_, _,  o3') = run r3 o2'
-        r4'@(_,_, _,  o4') = run r4 o3'
-        r5'@(d5', _, _, _) = run r5 o4'
-run5 _ _ = error "incorrect number of parameters"
 
 
 genSettings :: [Int] ->[[Int]]
@@ -186,9 +148,6 @@ genSettings avail = join $ map f2 cs
        f2 (i,r) =  map (i:) rs
          where rs = genSettings r
       
-
-       --sts = map (\(i,s) -> (i, getSettings))
-       -- sts = join $ map (\(i,s) -> map ((i:)) $  genSettings s) cs
 
 t1,t2,t3,t4,t5 :: [Int]
 t1 = [3,15,3,16,1002,16,10,16,1,16,15,15,4,15,99,0,0]
@@ -204,20 +163,33 @@ t5 = [3,52,1001,52,-5,52,3,53,1,52,56,54,1007,54,5,55,
       1008,54,0,55,1001,55,1,55,2,53,55,53,4,
       53,1001,56,-1,56,1005,56,6,99,0,0,0,0,10]
 
+initStates :: [Int] -> [Int] -> [State]
+initStates prog settings = map (initState prog . (:[])) settings
+
+
+
+runProg1 :: [Int] -> [Int] -> Int
+runProg1 prog = last . snd . chain [0] . initStates prog
+
+runProg2 :: [Int] -> [Int] -> Int
+runProg2 prog = loopUntilDone [0] . initStates prog
+
+
 main :: IO ()
-main = do let sets = genSettings [0..4]
-              m1 = maximum $ map (run5 t1)  sets
-              m2 = maximum $ map (run5 t2)  sets
-              m3 = maximum $ map (run5 t3)  sets
+main = do let sets =  genSettings [0..4]
+              m1 = maximum $ map (runProg1 t1)  sets
+              m2 = maximum $ map (runProg1 t2)  sets
+              m3 = maximum $ map (runProg1 t3)  sets
+
               s2 = genSettings [5..9]
-              m4 = maximum $ map (run5 t4) s2
-              m5 = maximum $ map (run5 t5) s2
-          -- print (m1,m2,m3)
-          -- input <- getInput
-          -- print $ maximum $ map (run5 input) sets
-          --print m4
-          print $ run5 t4 [5,6,7,8,9]
-          -- print m5
+              m4 = maximum $ map (runProg2 t4) s2
+              m5 = maximum $ map (runProg2 t5) s2
+          print (m1,m2,m3)
+          input <- getInput
+          print $ maximum $ map (runProg1 input) sets
+          print (m4,m5)
+          print $ maximum $ map (runProg2 input) s2
+          -- print $ run5 t4 [5,6,7,8,9]
           -- print $ maximum $ map (run5 input) s2
 
 
